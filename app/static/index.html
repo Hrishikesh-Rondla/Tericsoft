@@ -283,12 +283,25 @@
     const ctx = lead.retrieved_context;
     const hasLowConf = ctx.some(c => c.low_confidence);
 
-    // Build product cards – merge retrieved_context scores with relevant_products from LLM
+    // Build product cards – merge retrieved_context scores with relevant_products from LLM.
+    // Fuzzy match: if the LLM appended a category "(Data Management)" to the name,
+    // exact lookup fails. Fall back to checking if any retrieved name is contained
+    // within the LLM name string.
     const scoreMap = {};
     ctx.forEach(c => { scoreMap[c.name] = c.relevance_score; });
 
+    function findScore(llmName) {
+      // 1. Exact match
+      if (scoreMap[llmName] !== undefined) return scoreMap[llmName];
+      // 2. Fuzzy: retrieved name is a substring of the LLM name
+      for (const [key, val] of Object.entries(scoreMap)) {
+        if (llmName.includes(key)) return val;
+      }
+      return undefined;
+    }
+
     const productCards = (a.relevant_products || []).map(p => {
-      const score = scoreMap[p.name];
+      const score = findScore(p.name);
       const scorePct = score !== undefined ? `${Math.round(score * 100)}%` : '';
       return `
         <div class="product-card">

@@ -58,17 +58,27 @@ def _classify_priority(score: int) -> str:
 # Prompt builder
 # ---------------------------------------------------------------------------
 def _build_prompt(requirement: str, context_entries: list[dict]) -> str:
+    # Format: "NAME — category" so the model sees name and category separately.
+    # Keeping the name clean (no parentheses) prevents the model from copying
+    # "Product Name (Category)" into the JSON, which breaks the score lookup.
     context_block = "\n".join(
-        f"{i+1}. {e['name']} ({e['category']}): {e['description']} "
+        f"{i+1}. {e['name']} — {e['category']}: {e['description']} "
         f"Key features: {', '.join(e['key_features'])}. "
         f"Ideal for: {e['ideal_for']}. Tier: {e['pricing_tier']}."
         for i, e in enumerate(context_entries)
     )
 
+    # Build an explicit list of valid product names to paste into the prompt,
+    # so the model has no excuse to invent or combine names.
+    valid_names = "\n".join(f"  - {e['name']}" for e in context_entries)
+
     return f"""You are a senior B2B sales qualification analyst at Northwind Cloud.
 
 RETRIEVED PRODUCT CONTEXT (use ONLY these products – do not mention any product not listed here):
 {context_block}
+
+VALID PRODUCT NAMES (copy these EXACTLY into relevant_products[].name — do not add categories or extra words):
+{valid_names}
 
 CUSTOMER REQUIREMENT:
 {requirement}
@@ -81,10 +91,12 @@ SCORING CRITERIA (0-100):
 
 Score mapping: High >= 70, Medium 40-69, Low < 40.
 
+IMPORTANT: Include ALL products from the context that are relevant to the requirement in relevant_products, not just the best one.
+
 Return ONLY valid JSON matching this exact schema, no extra text:
 {{
   "lead_summary": "<2-3 sentence summary of this lead>",
-  "relevant_products": [{{"name": "<product name from context>", "why": "<one sentence>"}}],
+  "relevant_products": [{{"name": "<exact product name from VALID PRODUCT NAMES list above>", "why": "<one sentence>"}}],
   "customer_needs": ["<need 1>", "<need 2>"],
   "recommended_next_step": "<one sentence>",
   "follow_up_questions": ["<question 1>", "<question 2>", "<question 3>"],
